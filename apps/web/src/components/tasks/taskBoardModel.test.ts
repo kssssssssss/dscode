@@ -9,7 +9,7 @@ import {
   filterTaskCards,
   planTaskMove,
   type TaskCard,
-} from "./taskBoard";
+} from "./taskBoardModel";
 
 const local = EnvironmentId.make("local");
 const NOW = "2026-10-20T12:00:00.000Z";

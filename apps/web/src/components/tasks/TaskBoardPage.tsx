@@ -36,7 +36,7 @@ import {
   type TaskCard,
   type TaskColumnId,
   type TaskMoveEffect,
-} from "./taskBoard";
+} from "./taskBoardModel";
 
 const PLACEMENTS_KEY = "t3code:tasks:placements";
 const FILTERS_KEY = "t3code:tasks:filters";

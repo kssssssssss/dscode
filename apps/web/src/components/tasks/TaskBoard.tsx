@@ -26,7 +26,7 @@ import {
   type ManualTaskColumn,
   type TaskCard,
   type TaskColumnId,
-} from "./taskBoard";
+} from "./taskBoardModel";
 
 const COLUMN_DOT: Record<TaskColumnId, string> = {
   todo: "bg-muted-foreground/70",
