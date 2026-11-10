@@ -4,6 +4,7 @@ import {
   GearIcon,
   GitBranchIcon,
   GitPullRequestIcon,
+  KanbanIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
 import * as Schema from "effect/Schema";
@@ -39,6 +40,7 @@ export function useAppNavVariant() {
     select: (location) => new URLSearchParams(location.searchStr).get("nav"),
   });
   const requestedVariant = isAppNavVariant(requested) ? requested : null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes a ?nav= variant into localStorage when the URL requests one
   useEffect(() => {
     if (requestedVariant) setStoredVariant(requestedVariant);
   }, [requestedVariant, setStoredVariant]);
@@ -74,6 +76,13 @@ function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
       label: "Dashboard",
       active: pathname === "/dashboard",
       onClick: () => void navigate({ to: "/dashboard" }),
+    },
+    {
+      key: "tasks",
+      icon: <KanbanIcon />,
+      label: "Tasks",
+      active: pathname === "/tasks" || pathname.startsWith("/project-board/"),
+      onClick: () => void navigate({ to: "/tasks" }),
     },
     {
       key: "project-graph",

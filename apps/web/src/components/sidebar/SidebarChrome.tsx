@@ -4,6 +4,7 @@ import {
   ChartBarIcon,
   GearIcon,
   GitPullRequestIcon,
+  KanbanIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
@@ -237,6 +238,11 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/dashboard" });
   };
 
+  const handleTasksClick = () => {
+    closeMobileSidebar();
+    void navigate({ to: "/tasks" });
+  };
+
   const handleBackClick = () => {
     closeMobileSidebar();
     void navigateToMainApp();
@@ -269,6 +275,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Dashboard"
             onClick={handleDashboardClick}
           />
+          <SidebarUtilityItem icon={<KanbanIcon />} label="Tasks" onClick={handleTasksClick} />
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<GitPullRequestIcon />}

@@ -3,6 +3,7 @@ import {
   ChatsCircleIcon,
   ClockCountdownIcon,
   HammerIcon,
+  KanbanIcon,
   type Icon,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
@@ -187,26 +188,43 @@ function ProjectCard({
   project: DashboardProject<SidebarProjectSnapshot>;
 }) {
   return (
-    <Link
-      to="/project-graph/$projectKey"
-      params={{ projectKey: group.projectKey }}
-      className="flex items-center gap-3 rounded-xl bg-(--row-surface) px-3 py-2.5 outline-none squircle transition-colors hover:bg-(--row-surface-hover) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <ProjectFavicon project={group} className="size-8 shrink-0" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            {group.displayName}
-          </span>
-          {lastActivityMs === null ? null : (
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              <LastActivityLabel timestampMs={lastActivityMs} />
+    <div className="flex items-stretch overflow-hidden rounded-xl bg-(--row-surface) squircle transition-colors hover:bg-(--row-surface-hover)">
+      <Link
+        to="/project-graph/$projectKey"
+        params={{ projectKey: group.projectKey }}
+        className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ProjectFavicon project={group} className="size-8 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+              {group.displayName}
             </span>
-          )}
+            {lastActivityMs === null ? null : (
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                <LastActivityLabel timestampMs={lastActivityMs} />
+              </span>
+            )}
+          </div>
+          <ThreadCounts working={working} active={active} snoozed={snoozed} settled={settled} />
         </div>
-        <ThreadCounts working={working} active={active} snoozed={snoozed} settled={settled} />
-      </div>
-    </Link>
+      </Link>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Link
+              to="/project-board/$projectKey"
+              params={{ projectKey: group.projectKey }}
+              aria-label={`Open task board for ${group.displayName}`}
+              className="flex w-11 shrink-0 items-center justify-center text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            />
+          }
+        >
+          <KanbanIcon className="size-4" aria-hidden />
+        </TooltipTrigger>
+        <TooltipPopup>Task board</TooltipPopup>
+      </Tooltip>
+    </div>
   );
 }
 

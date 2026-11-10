@@ -198,7 +198,7 @@ function registerWorkspaceFocusCommands(router: AnyRouter): () => void {
 
 // Escape leaves the pull requests page and the dashboard when no scope (a selection, a dialog,
 // a drag) claimed it, so it observes after every other scope.
-const ESCAPE_TO_GO_BACK_PATHS = new Set(["/pull-requests", "/dashboard"]);
+const ESCAPE_TO_GO_BACK_PATHS = new Set(["/pull-requests", "/dashboard", "/tasks"]);
 
 function registerPullRequestsEscapeCommand(router: AnyRouter): () => void {
   return registerCommands(
@@ -206,7 +206,10 @@ function registerPullRequestsEscapeCommand(router: AnyRouter): () => void {
     {
       observe: (event, consumed) => {
         if (consumed || event.repeat || event.isComposing || event.key !== "Escape") return;
-        if (!ESCAPE_TO_GO_BACK_PATHS.has(router.state.location.pathname)) return;
+        const { pathname } = router.state.location;
+        if (!ESCAPE_TO_GO_BACK_PATHS.has(pathname) && !pathname.startsWith("/project-board/")) {
+          return;
+        }
         event.preventDefault();
         const activeElement = document.activeElement;
         if (activeElement instanceof HTMLElement) activeElement.blur();
