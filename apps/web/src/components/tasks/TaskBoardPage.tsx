@@ -25,6 +25,9 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useSettingsProjectGroups } from "../settings/useSettingsProjectGroups";
 import { ProjectCommitList } from "./ProjectCommitList";
 import { TaskBoard } from "./TaskBoard";
+import { TaskStepBoard } from "./TaskStepBoard";
+import { buildTaskSteps, taskPlanForCard } from "./taskPlanSummary";
+import { useTaskPlans } from "./useTaskPlans";
 import {
   buildTaskCards,
   countTaskColumns,
@@ -40,6 +43,8 @@ import {
 
 const PLACEMENTS_KEY = "t3code:tasks:placements";
 const FILTERS_KEY = "t3code:tasks:filters";
+const VIEW_KEY = "t3code:tasks:view";
+const TaskViewSchema = Schema.Literals(["threads", "steps"]);
 const TaskPlacementsSchema = Schema.Record(
   Schema.String,
   Schema.Literals(["todo", "review", "done"]),
@@ -78,6 +83,7 @@ export function TaskBoardPage(props: {
     TaskPlacementsSchema,
   );
   const [filters, setFilters] = useLocalStorage(FILTERS_KEY, EMPTY_FILTERS, TaskFiltersSchema);
+  const [view, setView] = useLocalStorage(VIEW_KEY, "threads", TaskViewSchema);
   const project = props.projectKey
     ? (groups.find((group) => group.projectKey === props.projectKey) ?? null)
     : null;
@@ -111,6 +117,9 @@ export function TaskBoardPage(props: {
   const counts = countTaskColumns(counted);
   const column = filters.column !== null && isTaskColumnId(filters.column) ? filters.column : null;
   const visible = filterTaskCards(counted, { projectKey: null, provider: null, column });
+  const plans = useTaskPlans(counted);
+  const steps = buildTaskSteps(visible, plans);
+  const planFor = (card: TaskCard) => taskPlanForCard(plans.get(card.key), card.hasProposedPlan);
   const member =
     project?.memberProjects.find(
       (entry) => `${entry.environmentId}:${entry.id}` === props.checkout,
@@ -198,6 +207,33 @@ export function TaskBoardPage(props: {
           </div>
           {groups.length > 0 ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div
+                role="group"
+                aria-label="Board contents"
+                className="flex shrink-0 gap-0.5 rounded-lg p-0.5 panel-well"
+              >
+                {(
+                  [
+                    ["threads", "Threads"],
+                    ["steps", "Steps"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={view === id}
+                    onClick={() => setView(id)}
+                    className={cn(
+                      "flex h-7 cursor-pointer items-center rounded-md px-2.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      view === id
+                        ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <TaskCountBar
                 counts={counts}
                 selected={column}
@@ -283,12 +319,26 @@ export function TaskBoardPage(props: {
                     <p className="py-6 text-sm text-muted-foreground">
                       No threads match these filters.
                     </p>
+                  ) : view === "steps" ? (
+                    <TaskStepBoard
+                      steps={steps}
+                      linkProjects={props.projectKey == null}
+                      onOpen={(step) =>
+                        void navigate({
+                          to: "/$environmentId/$threadId",
+                          params: buildThreadRouteParams(
+                            scopeThreadRef(step.environmentId, step.threadId),
+                          ),
+                        })
+                      }
+                    />
                   ) : (
                     <TaskBoard
                       cards={visible}
                       activeColumn={column}
                       linkProjects={props.projectKey == null}
                       nowMs={Date.parse(now)}
+                      planFor={planFor}
                       onOpen={openCard}
                       onPlace={(card, target) => void placeCard(card, target)}
                     />

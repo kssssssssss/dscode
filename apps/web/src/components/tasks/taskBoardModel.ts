@@ -111,6 +111,8 @@ export interface TaskCard {
   readonly statusLabel: string;
   readonly activityMs: number | null;
   readonly placement: ManualTaskColumn | null;
+  /** Shell flag for an active proposed plan, before the thread snapshot arrives. */
+  readonly hasProposedPlan: boolean;
 }
 
 export interface TaskProjectGroup {
@@ -190,6 +192,7 @@ export function buildTaskCards(input: {
           : classification.statusLabel,
       activityMs: taskActivityMs(thread),
       placement: classification.locked ? null : placement,
+      hasProposedPlan: thread.hasActionableProposedPlan,
     };
   });
   cards.sort(

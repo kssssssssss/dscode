@@ -34,6 +34,8 @@ All projects at a glance, grouped into active, working, snoozed, and settled. A 
 
 Two kanban views of agent threads. **Tasks** (`Ctrl+Alt+T`, or `Cmd+Alt+T` on macOS) is one board for every thread, with columns for to do, in progress, needs review, blocked, and done. **Project board** is the same board for a single project, beside that project's recent commits. Filter by project, provider, and status. Drag a resting card between To do, Needs review, and Done; the move settles, unsettles, or wakes the thread when that is what the column means. A running thread, or one waiting on you, stays in the column its status already has. Open a card to jump to the thread.
 
+A card also shows that thread's latest todo list (`3/7` and the step that is running) and expands to every step, with duration when the agent reported one. A thread that only has a proposed plan says it is awaiting approval, or shows that plan's status. **Steps** turns each todo item into its own card under Pending, Running, and Completed. The project, provider, and status filters still choose which threads those steps come from.
+
 ## Trying it
 
 The web app is hosted at **[dominikscholz.github.io/dscode](https://dominikscholz.github.io/dscode/)**. Like [app.t3.codes](https://app.t3.codes), it's only the interface: it connects to a T3 server running on your own machine. Pair one under **Settings → Connections → Add environment**.

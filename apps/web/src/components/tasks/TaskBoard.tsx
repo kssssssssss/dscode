@@ -27,6 +27,12 @@ import {
   type TaskCard,
   type TaskColumnId,
 } from "./taskBoardModel";
+import {
+  formatStepDuration,
+  proposedPlanLabel,
+  type TaskPlanSummary,
+  type TaskStepColumnId,
+} from "./taskPlanSummary";
 
 const COLUMN_DOT: Record<TaskColumnId, string> = {
   todo: "bg-muted-foreground/70",
@@ -41,6 +47,7 @@ export function TaskBoard(props: {
   readonly activeColumn: TaskColumnId | null;
   readonly linkProjects: boolean;
   readonly nowMs: number;
+  readonly planFor: (card: TaskCard) => TaskPlanSummary | null;
   readonly onOpen: (card: TaskCard) => void;
   readonly onPlace: (card: TaskCard, target: ManualTaskColumn | "auto") => void;
 }) {
@@ -50,6 +57,15 @@ export function TaskBoard(props: {
   );
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<TaskColumnId | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpanded = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   const columns =
     props.activeColumn === null
       ? TASK_COLUMNS
@@ -104,6 +120,9 @@ export function TaskBoard(props: {
             cards={props.cards.filter((card) => card.column === column.id)}
             linkProjects={props.linkProjects}
             nowMs={props.nowMs}
+            planFor={props.planFor}
+            expanded={expanded}
+            onTogglePlan={toggleExpanded}
             onOpen={props.onOpen}
             onPlace={props.onPlace}
           />
@@ -123,6 +142,9 @@ function TaskColumn(props: {
   readonly cards: readonly TaskCard[];
   readonly linkProjects: boolean;
   readonly nowMs: number;
+  readonly planFor: (card: TaskCard) => TaskPlanSummary | null;
+  readonly expanded: ReadonlySet<string>;
+  readonly onTogglePlan: (key: string) => void;
   readonly onOpen: (card: TaskCard) => void;
   readonly onPlace: (card: TaskCard, target: ManualTaskColumn | "auto") => void;
 }) {
@@ -163,6 +185,9 @@ function TaskColumn(props: {
               card={card}
               linkProjects={props.linkProjects}
               nowMs={props.nowMs}
+              plan={props.planFor(card)}
+              expanded={props.expanded.has(card.key)}
+              onTogglePlan={props.onTogglePlan}
               onOpen={props.onOpen}
               onPlace={props.onPlace}
             />
@@ -177,6 +202,9 @@ function TaskCardView(props: {
   readonly card: TaskCard;
   readonly linkProjects: boolean;
   readonly nowMs: number;
+  readonly plan: TaskPlanSummary | null;
+  readonly expanded: boolean;
+  readonly onTogglePlan: (key: string) => void;
   readonly onOpen: (card: TaskCard) => void;
   readonly onPlace: (card: TaskCard, target: ManualTaskColumn | "auto") => void;
 }) {
@@ -250,6 +278,12 @@ function TaskCardView(props: {
           </Link>
         </div>
       ) : null}
+      <TaskPlanDetails
+        cardKey={card.key}
+        plan={props.plan}
+        expanded={props.expanded}
+        onToggle={props.onTogglePlan}
+      />
       {card.locked ? null : (
         <div className="px-3 pb-2">
           <label className="sr-only" htmlFor={`move-${card.key}`}>
@@ -284,6 +318,66 @@ function TaskCardView(props: {
         </div>
       )}
     </article>
+  );
+}
+
+const STEP_DOT: Record<TaskStepColumnId, string> = {
+  pending: "bg-muted-foreground/70",
+  running: "bg-sky-500",
+  completed: "bg-emerald-500",
+};
+
+function TaskPlanDetails(props: {
+  readonly cardKey: string;
+  readonly plan: TaskPlanSummary | null;
+  readonly expanded: boolean;
+  readonly onToggle: (key: string) => void;
+}) {
+  const { plan } = props;
+  if (plan === null) return null;
+  if (plan.kind === "proposed_plan") {
+    return (
+      <p className="px-3 pb-2 text-xs text-muted-foreground">{proposedPlanLabel(plan.status)}</p>
+    );
+  }
+  return (
+    <div className="px-3 pb-2">
+      <button
+        type="button"
+        aria-expanded={props.expanded}
+        onClick={() => props.onToggle(props.cardKey)}
+        className="flex w-full min-w-0 cursor-pointer items-baseline gap-1.5 text-left text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span aria-hidden className="shrink-0 text-foreground/60">
+          {props.expanded ? "▾" : "▸"}
+        </span>
+        <span className="shrink-0 tabular-nums text-foreground/80">
+          {plan.completed}/{plan.total}
+        </span>
+        {plan.runningText ? (
+          <span className="min-w-0 flex-1 truncate">{plan.runningText}</span>
+        ) : null}
+      </button>
+      {props.expanded ? (
+        <ol className="mt-1 flex flex-col gap-1">
+          {plan.steps.map((step) => (
+            <li key={step.id} className="flex min-w-0 items-baseline gap-2 text-xs">
+              <span
+                aria-hidden
+                className={cn("size-1.5 shrink-0 rounded-full", STEP_DOT[step.status])}
+              />
+              <span className="sr-only">{step.status}</span>
+              <span className="min-w-0 flex-1 truncate text-foreground/90">{step.text}</span>
+              {step.durationMs !== null ? (
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {formatStepDuration(step.durationMs)}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
   );
 }
 
