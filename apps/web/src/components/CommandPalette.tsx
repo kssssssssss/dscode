@@ -56,6 +56,7 @@ import {
   ArrowLeftIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
+  KanbanIcon,
   LayoutGridIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -1584,6 +1585,17 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push({
     kind: "action",
+    value: "action:tasks",
+    searchTerms: ["tasks", "kanban", "board", "threads", "status", "todo", "review"],
+    title: "Open tasks",
+    icon: <KanbanIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/tasks" });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
     value: "action:usage",
     searchTerms: ["usage", "use", "tokens", "cost", "spend", "limits", "stats", "analytics"],
     title: "Open usage",
@@ -1666,6 +1678,20 @@ function OpenCommandPaletteDialog(props: {
       run: async () => {
         await navigate({
           to: "/project-graph/$projectKey",
+          params: { projectKey: contextualProjectGroup.projectKey },
+        });
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:project-board",
+      searchTerms: ["project", "tasks", "kanban", "board", "threads", "commits"],
+      title: "Open project board",
+      description: contextualProjectGroup.displayName,
+      icon: <KanbanIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/project-board/$projectKey",
           params: { projectKey: contextualProjectGroup.projectKey },
         });
       },

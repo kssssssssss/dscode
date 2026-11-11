@@ -39,6 +39,13 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
+  PlannedTaskReadError,
+  PlannedTaskReadInput,
+  PlannedTaskReadResult,
+  PlannedTaskSnapshot,
+  PlannedTaskSubscribeInput,
+} from "./plannedTasks.ts";
+import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
   ProviderAuthState,
@@ -409,6 +416,8 @@ export const WS_METHODS = {
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
+  plannedTasksSubscribe: "plannedTasks.subscribe",
+  plannedTasksRead: "plannedTasks.read",
   projectsSearchContents: "projects.searchContents",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
@@ -1326,6 +1335,19 @@ const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
   error: Schema.Union([ProjectReadFileError, EnvironmentAuthorizationError]),
 });
 
+const WsPlannedTasksSubscribeRpc = Rpc.make(WS_METHODS.plannedTasksSubscribe, {
+  payload: PlannedTaskSubscribeInput,
+  success: PlannedTaskSnapshot,
+  error: Schema.Union([PlannedTaskReadError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsPlannedTasksReadRpc = Rpc.make(WS_METHODS.plannedTasksRead, {
+  payload: PlannedTaskReadInput,
+  success: PlannedTaskReadResult,
+  error: Schema.Union([PlannedTaskReadError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
@@ -2106,6 +2128,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsListEntriesRpc,
   WsProjectsListIgnoredFilesRpc,
   WsProjectsReadFileRpc,
+  WsPlannedTasksSubscribeRpc,
+  WsPlannedTasksReadRpc,
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,

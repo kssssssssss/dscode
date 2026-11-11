@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as GuestRouteImport } from './routes/guest'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -19,6 +20,7 @@ import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ProjectGraphProjectKeyRouteImport } from './routes/project-graph.$projectKey'
+import { Route as ProjectBoardProjectKeyRouteImport } from './routes/project-board.$projectKey'
 import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
@@ -55,6 +57,11 @@ import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$e
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TasksRoute = TasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PairRoute = PairRouteImport.update({
@@ -99,6 +106,11 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
 const ProjectGraphProjectKeyRoute = ProjectGraphProjectKeyRouteImport.update({
   id: '/project-graph/$projectKey',
   path: '/project-graph/$projectKey',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectBoardProjectKeyRoute = ProjectBoardProjectKeyRouteImport.update({
+  id: '/project-board/$projectKey',
+  path: '/project-board/$projectKey',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatUsageRoute = ChatUsageRouteImport.update({
@@ -274,11 +286,13 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
+  '/tasks': typeof TasksRoute
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
+  '/project-board/$projectKey': typeof ProjectBoardProjectKeyRoute
   '/project-graph/$projectKey': typeof ProjectGraphProjectKeyRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -316,11 +330,13 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
+  '/tasks': typeof TasksRoute
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
+  '/project-board/$projectKey': typeof ProjectBoardProjectKeyRoute
   '/project-graph/$projectKey': typeof ProjectGraphProjectKeyRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/': typeof ChatIndexRoute
@@ -361,11 +377,13 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
+  '/tasks': typeof TasksRoute
   '/welcome': typeof WelcomeRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
   '/_chat/usage': typeof ChatUsageRoute
+  '/project-board/$projectKey': typeof ProjectBoardProjectKeyRoute
   '/project-graph/$projectKey': typeof ProjectGraphProjectKeyRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/_chat/': typeof ChatIndexRoute
@@ -407,11 +425,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/guest'
     | '/pair'
+    | '/tasks'
     | '/welcome'
     | '/new'
     | '/pull-requests'
     | '/settings'
     | '/usage'
+    | '/project-board/$projectKey'
     | '/project-graph/$projectKey'
     | '/projects/$projectKey'
     | '/$environmentId/$threadId'
@@ -449,11 +469,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/guest'
     | '/pair'
+    | '/tasks'
     | '/welcome'
     | '/new'
     | '/pull-requests'
     | '/settings'
     | '/usage'
+    | '/project-board/$projectKey'
     | '/project-graph/$projectKey'
     | '/projects/$projectKey'
     | '/'
@@ -493,11 +515,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/guest'
     | '/pair'
+    | '/tasks'
     | '/welcome'
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/_chat/settings'
     | '/_chat/usage'
+    | '/project-board/$projectKey'
     | '/project-graph/$projectKey'
     | '/projects/$projectKey'
     | '/_chat/'
@@ -538,7 +562,9 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   GuestRoute: typeof GuestRoute
   PairRoute: typeof PairRoute
+  TasksRoute: typeof TasksRoute
   WelcomeRoute: typeof WelcomeRoute
+  ProjectBoardProjectKeyRoute: typeof ProjectBoardProjectKeyRoute
   ProjectGraphProjectKeyRoute: typeof ProjectGraphProjectKeyRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
 }
@@ -550,6 +576,13 @@ declare module '@tanstack/react-router' {
       path: '/welcome'
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tasks': {
+      id: '/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof TasksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pair': {
@@ -613,6 +646,13 @@ declare module '@tanstack/react-router' {
       path: '/project-graph/$projectKey'
       fullPath: '/project-graph/$projectKey'
       preLoaderRoute: typeof ProjectGraphProjectKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/project-board/$projectKey': {
+      id: '/project-board/$projectKey'
+      path: '/project-board/$projectKey'
+      fullPath: '/project-board/$projectKey'
+      preLoaderRoute: typeof ProjectBoardProjectKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat/usage': {
@@ -933,7 +973,9 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   GuestRoute: GuestRoute,
   PairRoute: PairRoute,
+  TasksRoute: TasksRoute,
   WelcomeRoute: WelcomeRoute,
+  ProjectBoardProjectKeyRoute: ProjectBoardProjectKeyRoute,
   ProjectGraphProjectKeyRoute: ProjectGraphProjectKeyRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
 }
