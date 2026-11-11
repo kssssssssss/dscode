@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildTaskSteps,
+  collectTaskPlans,
   formatStepDuration,
+  mergeTaskPlans,
+  planPreviewLines,
   proposedPlanLabel,
-  selectTaskPlan,
   taskPlanForCard,
   type TaskPlanSource,
   type TaskPlanSourceStep,
@@ -20,9 +22,9 @@ function todo(
   return { id, kind: "todo_list", status, runId, steps };
 }
 
-describe("selectTaskPlan", () => {
+describe("collectTaskPlans", () => {
   it("uses the latest todo list and reports the running step", () => {
-    const plan = selectTaskPlan({
+    const plan = collectTaskPlans({
       runs: [
         { id: "run-1", ordinal: 1 },
         { id: "run-2", ordinal: 2 },
@@ -37,51 +39,138 @@ describe("selectTaskPlan", () => {
         ]),
       ],
     });
-    expect(plan).toEqual({
+    expect(plan.todo).toEqual({
       kind: "todo_list",
+      id: "current",
+      sequence: 2_000_002,
       completed: 1,
       total: 3,
       runningText: "Write the board",
+      explanation: null,
       steps: [
         { id: "a", text: "Read the diff", status: "completed", durationMs: 1500 },
         { id: "b", text: "Write the board", status: "running", durationMs: null },
         { id: "c", text: "Open the thread", status: "pending", durationMs: null },
       ],
     });
+    expect(plan.previous.map((version) => version.id)).toEqual(["stale", "old"]);
   });
 
   it("shows an active proposed plan when the thread has no current todo list", () => {
     expect(
-      selectTaskPlan({
+      collectTaskPlans({
         runs: [],
         plans: [
-          { id: "old", kind: "proposed_plan", status: "superseded", runId: null },
-          { id: "plan", kind: "proposed_plan", status: "active", runId: "run-1" },
+          { id: "old", kind: "proposed_plan", status: "superseded", runId: null, markdown: "Old" },
+          {
+            id: "plan",
+            kind: "proposed_plan",
+            status: "active",
+            runId: "run-1",
+            markdown: "# Ship it\n\nDo the thing.",
+          },
         ],
       }),
-    ).toEqual({ kind: "proposed_plan", status: "active" });
+    ).toMatchObject({
+      todo: null,
+      proposed: { id: "plan", markdown: "# Ship it\n\nDo the thing.", stripped: false },
+      previous: [{ id: "old", markdown: "Old" }],
+    });
     expect(proposedPlanLabel("active")).toBe("Plan awaiting approval");
     expect(proposedPlanLabel("draft")).toBe("Draft plan");
   });
 
-  it("prefers a todo list over a proposed plan", () => {
-    const plan = selectTaskPlan({
+  it("keeps the proposed plan beside the latest todo list", () => {
+    const plan = collectTaskPlans({
       runs: [],
       plans: [
-        { id: "plan", kind: "proposed_plan", status: "active", runId: null },
+        { id: "plan", kind: "proposed_plan", status: "active", runId: null, markdown: "Keep me" },
         todo("list", "active", null, [{ id: "a", text: "Ship it", status: "pending" }]),
       ],
     });
-    expect(plan?.kind).toBe("todo_list");
+    expect(plan.todo?.id).toBe("list");
+    expect(plan.proposed?.markdown).toBe("Keep me");
+    expect(plan.previous).toEqual([]);
+  });
+
+  it("keeps a todo explanation and lists superseded plans newest first", () => {
+    const plan = collectTaskPlans({
+      runs: [{ id: "run-1", ordinal: 1 }],
+      plans: [
+        {
+          id: "first",
+          kind: "todo_list",
+          status: "superseded",
+          runId: "run-1",
+          explanation: "Started here",
+          steps: [{ id: "a", text: "Old step", status: "completed" }],
+        },
+        {
+          id: "second",
+          kind: "todo_list",
+          status: "active",
+          runId: "run-1",
+          explanation: "  Why this list  ",
+          steps: [{ id: "b", text: "New step", status: "pending" }],
+        },
+      ],
+    });
+    expect(plan.todo?.explanation).toBe("Why this list");
+    expect(plan.previous.map((version) => version.id)).toEqual(["first"]);
+    expect(plan.previous[0]?.explanation).toBe("Started here");
+  });
+
+  it("fills a trimmed plan body from the full snapshot", () => {
+    const live = collectTaskPlans({
+      runs: [],
+      plans: [
+        {
+          id: "old",
+          kind: "proposed_plan",
+          status: "superseded",
+          runId: null,
+          markdown: "",
+          detailInTurnItem: true,
+        },
+        { id: "plan", kind: "proposed_plan", status: "active", runId: null, markdown: "# Now" },
+      ],
+    });
+    const full = collectTaskPlans({
+      runs: [],
+      plans: [
+        { id: "old", kind: "proposed_plan", status: "superseded", runId: null, markdown: "# Then" },
+        { id: "plan", kind: "proposed_plan", status: "active", runId: null, markdown: "# Now" },
+      ],
+    });
+    expect(live.previous[0]?.stripped).toBe(true);
+    expect(mergeTaskPlans(live, full)?.previous[0]?.markdown).toBe("# Then");
   });
 
   it("keeps the shell's proposed-plan flag until a snapshot arrives", () => {
     expect(taskPlanForCard(undefined, true)).toEqual({
-      kind: "proposed_plan",
-      status: "active",
+      todo: null,
+      proposed: {
+        kind: "proposed_plan",
+        id: "",
+        sequence: -1,
+        status: "active",
+        markdown: "",
+        stripped: false,
+      },
+      previous: [],
     });
     expect(taskPlanForCard(null, true)).toBeNull();
     expect(taskPlanForCard(undefined, false)).toBeNull();
+  });
+});
+
+describe("planPreviewLines", () => {
+  it("keeps the first visible lines of a proposed plan", () => {
+    expect(planPreviewLines("# Title\n\nFirst\n\nSecond\nThird\nFourth", 3)).toEqual([
+      "First",
+      "Second",
+      "Third",
+    ]);
   });
 });
 
@@ -108,7 +197,7 @@ describe("buildTaskSteps", () => {
     const plans = new Map([
       [
         card.key,
-        selectTaskPlan({
+        collectTaskPlans({
           runs: [],
           plans: [
             todo("list", "active", null, [
@@ -118,7 +207,13 @@ describe("buildTaskSteps", () => {
           ],
         }),
       ],
-      ["primary:other", { kind: "proposed_plan" as const, status: "active" as const }],
+      [
+        "primary:other",
+        collectTaskPlans({
+          runs: [],
+          plans: [{ id: "plan", kind: "proposed_plan", status: "active", runId: null }],
+        }),
+      ],
     ]);
     expect(buildTaskSteps([card], plans)).toEqual([
       {
@@ -129,6 +224,7 @@ describe("buildTaskSteps", () => {
         projectName: "DS Code",
         projectKey: "project",
         threadTitle: "Review the board",
+        threadKey: "primary:thread-1",
         environmentId: "primary",
         threadId: "thread-1",
       },
@@ -140,6 +236,7 @@ describe("buildTaskSteps", () => {
         projectName: "DS Code",
         projectKey: "project",
         threadTitle: "Review the board",
+        threadKey: "primary:thread-1",
         environmentId: "primary",
         threadId: "thread-1",
       },

@@ -3,11 +3,14 @@ import { resolveProjectGraphSource } from "@t3tools/client-runtime/state/project
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { Link, useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
+import { useState } from "react";
 
 import { isElectron } from "../../env";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useThreadActions } from "../../hooks/useThreadActions";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { orchestrationEnvironment } from "../../state/orchestration";
 import { cn } from "../../lib/utils";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
@@ -26,8 +29,17 @@ import { useSettingsProjectGroups } from "../settings/useSettingsProjectGroups";
 import { ProjectCommitList } from "./ProjectCommitList";
 import { TaskBoard } from "./TaskBoard";
 import { TaskStepBoard } from "./TaskStepBoard";
-import { buildTaskSteps, taskPlanForCard } from "./taskPlanSummary";
+import {
+  buildTaskSteps,
+  collectTaskPlans,
+  mergeTaskPlans,
+  proposedPlanLabel,
+  taskPlanForCard,
+  type TaskThreadPlans,
+} from "./taskPlanSummary";
+import { TaskPlanDialog } from "./taskPlanView";
 import { useTaskPlans } from "./useTaskPlans";
+import type { TaskPlanEntry } from "./TaskStepBoard";
 import {
   buildTaskCards,
   countTaskColumns,
@@ -117,9 +129,36 @@ export function TaskBoardPage(props: {
   const counts = countTaskColumns(counted);
   const column = filters.column !== null && isTaskColumnId(filters.column) ? filters.column : null;
   const visible = filterTaskCards(counted, { projectKey: null, provider: null, column });
-  const plans = useTaskPlans(counted);
-  const steps = buildTaskSteps(visible, plans);
-  const planFor = (card: TaskCard) => taskPlanForCard(plans.get(card.key), card.hasProposedPlan);
+  const livePlans = useTaskPlans(counted);
+  const [fullPlans, setFullPlans] = useState<ReadonlyMap<string, TaskThreadPlans>>(new Map());
+  const [historyLoading, setHistoryLoading] = useState<ReadonlySet<string>>(new Set());
+  const [historyError, setHistoryError] = useState<ReadonlyMap<string, string>>(new Map());
+  const [reader, setReader] = useState<{
+    readonly key: string;
+    readonly title: string;
+    readonly environmentId: TaskCard["environmentId"];
+    readonly threadId: TaskCard["threadId"];
+  } | null>(null);
+  const loadPlanSnapshot = useAtomCommand(orchestrationEnvironment.threadPlanSnapshot, {
+    reportFailure: false,
+  });
+  const planFor = (card: TaskCard) =>
+    mergeTaskPlans(
+      taskPlanForCard(livePlans.get(card.key), card.hasProposedPlan),
+      fullPlans.get(card.key) ?? null,
+    );
+  const steps = buildTaskSteps(visible, new Map(visible.map((card) => [card.key, planFor(card)])));
+  const planEntries: TaskPlanEntry[] = [];
+  for (const card of visible) {
+    const proposed = planFor(card)?.proposed;
+    if (!proposed || planFor(card)?.todo) continue;
+    const preview = proposed.markdown.trim().split("\n")[0] ?? "";
+    planEntries.push({
+      key: card.key,
+      title: card.title,
+      detail: preview.length > 0 ? preview : proposedPlanLabel(proposed.status),
+    });
+  }
   const member =
     project?.memberProjects.find(
       (entry) => `${entry.environmentId}:${entry.id}` === props.checkout,
@@ -130,6 +169,45 @@ export function TaskBoardPage(props: {
     member === null
       ? null
       : resolveProjectGraphSource({ owner: member.environmentId, environments });
+
+  const loadHistory = async (card: Pick<TaskCard, "key" | "environmentId" | "threadId">) => {
+    if (historyLoading.has(card.key)) return;
+    setHistoryLoading((current) => new Set(current).add(card.key));
+    setHistoryError((current) => {
+      if (!current.has(card.key)) return current;
+      const next = new Map(current);
+      next.delete(card.key);
+      return next;
+    });
+    const result = await loadPlanSnapshot({
+      environmentId: card.environmentId,
+      input: { threadId: card.threadId },
+    });
+    setHistoryLoading((current) => {
+      const next = new Set(current);
+      next.delete(card.key);
+      return next;
+    });
+    if (result._tag !== "Success") {
+      setHistoryError((current) => new Map(current).set(card.key, "Could not load earlier plans."));
+      return;
+    }
+    setFullPlans((current) =>
+      new Map(current).set(
+        card.key,
+        collectTaskPlans({ plans: result.value.plans, runs: result.value.runs }),
+      ),
+    );
+  };
+  const openPlan = (card: Pick<TaskCard, "key" | "title" | "environmentId" | "threadId">) => {
+    setReader({
+      key: card.key,
+      title: card.title,
+      environmentId: card.environmentId,
+      threadId: card.threadId,
+    });
+    void loadHistory(card);
+  };
 
   const placeCard = async (card: TaskCard, target: ManualTaskColumn | "auto") => {
     if (target === "auto") {
@@ -177,6 +255,8 @@ export function TaskBoardPage(props: {
       params: buildThreadRouteParams(scopeThreadRef(card.environmentId, card.threadId)),
     });
   };
+  const readerCard =
+    reader === null ? null : (counted.find((card) => card.key === reader.key) ?? null);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
@@ -322,6 +402,7 @@ export function TaskBoardPage(props: {
                   ) : view === "steps" ? (
                     <TaskStepBoard
                       steps={steps}
+                      plans={planEntries}
                       linkProjects={props.projectKey == null}
                       onOpen={(step) =>
                         void navigate({
@@ -331,6 +412,10 @@ export function TaskBoardPage(props: {
                           ),
                         })
                       }
+                      onOpenPlan={(key) => {
+                        const card = visible.find((entry) => entry.key === key);
+                        if (card) openPlan(card);
+                      }}
                     />
                   ) : (
                     <TaskBoard
@@ -339,6 +424,10 @@ export function TaskBoardPage(props: {
                       linkProjects={props.projectKey == null}
                       nowMs={Date.parse(now)}
                       planFor={planFor}
+                      historyLoading={historyLoading}
+                      historyError={historyError}
+                      onLoadHistory={(card) => void loadHistory(card)}
+                      onOpenPlan={openPlan}
                       onOpen={openCard}
                       onPlace={(card, target) => void placeCard(card, target)}
                     />
@@ -382,6 +471,20 @@ export function TaskBoardPage(props: {
           </div>
         )}
       </div>
+      <TaskPlanDialog
+        open={reader !== null}
+        title={reader?.title ?? "Plan"}
+        environmentId={reader?.environmentId ?? null}
+        plans={readerCard ? planFor(readerCard) : null}
+        historyLoading={reader !== null && historyLoading.has(reader.key)}
+        historyError={reader ? (historyError.get(reader.key) ?? null) : null}
+        onOpenChange={(open) => {
+          if (!open) setReader(null);
+        }}
+        onLoadHistory={() => {
+          if (readerCard) void loadHistory(readerCard);
+        }}
+      />
     </SidebarInset>
   );
 }
