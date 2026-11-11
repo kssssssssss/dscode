@@ -36,6 +36,14 @@ Two kanban views of agent threads. **Tasks** (`Ctrl+Alt+T`, or `Cmd+Alt+T` on ma
 
 A card also shows that thread's latest todo list (`3/7` and the step that is running). In the Threads view the card adds a stacked bar of those steps — done, running, pending, and blocked — with the counts and the percent complete. A step that is not done counts as blocked when the thread is waiting on approval, input, a guest, or a proposed plan, or when the run failed, was interrupted, or stopped with steps left unfinished. The blocked count says which. A panel at the top totals the threads in view and lists each one, sortable by percent complete. Expand a list for the explanation and every step, with duration when the agent reported one. A proposed plan starts as a few lines and expands to the full markdown; **Open plan** puts a long plan in a scrollable dialog. **Previous plans** lists older versions, newest first, including ones the live snapshot only kept as a status. **Steps** turns each todo item into its own card under Pending, Running, and Completed, and can open that same plan. The project, provider, and status filters still choose which threads those steps come from.
 
+**Planned tasks** is a third view of the markdown issues in the project, not of threads. By default the server reads `tasks/<topic>/issues/NN-title.md`. A project can point somewhere else with `.t3/task-board.json`:
+
+```json
+{ "issuesGlob": "tasks/*/issues/*.md" }
+```
+
+`Status` on an issue is only a triage badge. `Execution` (`open`, `claimed`, `blocked`, `resolved`) is the column. An issue with no Execution stays **unknown / not tracked**, never done. Acceptance is the checkboxes under `## 交付与验收` (or `## 验收条件` / `## 范围与验收`). A task is **ready** when it is open and every `Blocked by` task in the same topic is resolved. Threads, including child threads, link from a task number in the title, branch, worktree, or opening message, and a link or unlink on the card is remembered in this browser. The progress bars count each planned task once. A finished thread does not accept a task. Parent rows can show a rollup labeled "including children"; that rollup is not added again to the total. On the project board the scan uses the selected checkout. On the overall board each project uses its first checkout.
+
 ## Trying it
 
 The web app is hosted at **[dominikscholz.github.io/dscode](https://dominikscholz.github.io/dscode/)**. Like [app.t3.codes](https://app.t3.codes), it's only the interface: it connects to a T3 server running on your own machine. Pair one under **Settings → Connections → Add environment**.

@@ -1,4 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import type { PlannedTaskSnapshot } from "@t3tools/contracts";
 import { resolveProjectGraphSource } from "@t3tools/client-runtime/state/project-graph-source";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -26,6 +28,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useSettingsProjectGroups } from "../settings/useSettingsProjectGroups";
+import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { ProjectCommitList } from "./ProjectCommitList";
 import { TaskBoard } from "./TaskBoard";
 import { TaskStepBoard } from "./TaskStepBoard";
@@ -40,7 +43,24 @@ import {
 import { taskThreadStepProgress } from "./taskProgress";
 import { TaskPlanDialog } from "./taskPlanView";
 import { TaskProgressPanel } from "./taskProgressView";
+import {
+  PlannedTaskBoard,
+  PlannedTaskProgress,
+  type PlannedBoardTask,
+  type PlannedBoardThread,
+} from "./plannedTaskBoard";
+import {
+  linkThreadsToPlannedTasks,
+  type PlannedLinkThread,
+  type PlannedTaskLink,
+} from "./plannedTaskModel";
+import {
+  usePlannedTaskSnapshots,
+  useThreadOpeningTexts,
+  type PlannedTaskWorkspace,
+} from "./usePlannedTasks";
 import { useTaskPlans } from "./useTaskPlans";
+import { resolveThreadStatusPill } from "../Sidebar.logic";
 import type { TaskPlanEntry } from "./TaskStepBoard";
 import {
   buildTaskCards,
@@ -58,7 +78,14 @@ import {
 const PLACEMENTS_KEY = "t3code:tasks:placements";
 const FILTERS_KEY = "t3code:tasks:filters";
 const VIEW_KEY = "t3code:tasks:view";
-const TaskViewSchema = Schema.Literals(["threads", "steps"]);
+const LINKS_KEY = "t3code:tasks:task-links";
+const TOPIC_KEY = "t3code:tasks:topic";
+const TaskViewSchema = Schema.Literals(["threads", "steps", "planned"]);
+const PlannedLinksSchema = Schema.Record(
+  Schema.String,
+  Schema.NullOr(Schema.Struct({ topic: Schema.String, number: Schema.String })),
+);
+const TopicSchema = Schema.NullOr(Schema.String);
 const TaskPlacementsSchema = Schema.Record(
   Schema.String,
   Schema.Literals(["todo", "review", "done"]),
@@ -98,6 +125,8 @@ export function TaskBoardPage(props: {
   );
   const [filters, setFilters] = useLocalStorage(FILTERS_KEY, EMPTY_FILTERS, TaskFiltersSchema);
   const [view, setView] = useLocalStorage(VIEW_KEY, "threads", TaskViewSchema);
+  const [taskLinks, setTaskLinks] = useLocalStorage(LINKS_KEY, {}, PlannedLinksSchema);
+  const [topicFilter, setTopicFilter] = useLocalStorage(TOPIC_KEY, null, TopicSchema);
   const project = props.projectKey
     ? (groups.find((group) => group.projectKey === props.projectKey) ?? null)
     : null;
@@ -269,6 +298,62 @@ export function TaskBoardPage(props: {
       blockedReason: stepProgress.blockedReason,
     };
   });
+  const plannedWorkspaces: PlannedTaskWorkspace[] =
+    view === "planned"
+      ? props.projectKey
+        ? project && member
+          ? [
+              {
+                projectKey: project.projectKey,
+                projectName: project.displayName,
+                environmentId: member.environmentId,
+                cwd: member.workspaceRoot,
+              },
+            ]
+          : []
+        : groups.flatMap((group) => {
+            if (projectFilter !== null && group.projectKey !== projectFilter) return [];
+            const checkout = group.memberProjects[0];
+            if (checkout === undefined) return [];
+            return [
+              {
+                projectKey: group.projectKey,
+                projectName: group.displayName,
+                environmentId: checkout.environmentId,
+                cwd: checkout.workspaceRoot,
+              },
+            ];
+          })
+      : [];
+  const plannedState = usePlannedTaskSnapshots(plannedWorkspaces);
+  // Opening text comes from threads the board already reads. Child threads link
+  // from their title, branch, and worktree.
+  const openingTexts = useThreadOpeningTexts(
+    view === "planned"
+      ? projectScoped.map((card) => ({
+          environmentId: card.environmentId,
+          threadId: card.threadId,
+        }))
+      : [],
+  );
+  const planned = buildPlannedBoard({
+    active: view === "planned",
+    snapshots: plannedState.snapshots,
+    threads,
+    groups,
+    links: taskLinks,
+    openingTexts,
+    topic: topicFilter,
+    showFirstCheckoutNote: props.projectKey == null,
+  });
+  const setPlannedLink = (threadKey: string, link: PlannedTaskLink | null | "auto") => {
+    setTaskLinks((current) => {
+      const next = { ...current };
+      if (link === "auto") delete next[threadKey];
+      else next[threadKey] = link;
+      return next;
+    });
+  };
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
@@ -308,6 +393,7 @@ export function TaskBoardPage(props: {
                   [
                     ["threads", "Threads"],
                     ["steps", "Steps"],
+                    ["planned", "Planned tasks"],
                   ] as const
                 ).map(([id, label]) => (
                   <button
@@ -326,11 +412,13 @@ export function TaskBoardPage(props: {
                   </button>
                 ))}
               </div>
-              <TaskCountBar
-                counts={counts}
-                selected={column}
-                onSelect={(next) => setFilters((current) => ({ ...current, column: next }))}
-              />
+              {view === "planned" ? null : (
+                <TaskCountBar
+                  counts={counts}
+                  selected={column}
+                  onSelect={(next) => setFilters((current) => ({ ...current, column: next }))}
+                />
+              )}
               {props.projectKey ? (
                 groups.length > 1 ? (
                   <FilterSelect
@@ -364,20 +452,40 @@ export function TaskBoardPage(props: {
                   }
                 />
               )}
-              <FilterSelect
-                label="Provider"
-                value={provider ?? ""}
-                options={[
-                  { value: "", label: "All providers" },
-                  ...providers.map((entry) => ({ value: entry, label: entry })),
-                ]}
-                onChange={(value) =>
-                  setFilters((current) => ({ ...current, provider: value || null }))
-                }
-              />
+              {view === "planned" ? (
+                <FilterSelect
+                  label="Topic"
+                  value={planned.topic ?? ""}
+                  options={[
+                    { value: "", label: "All topics" },
+                    ...planned.topics.map((topic) => ({ value: topic, label: topic })),
+                  ]}
+                  onChange={(value) => setTopicFilter(value.length > 0 ? value : null)}
+                />
+              ) : (
+                <FilterSelect
+                  label="Provider"
+                  value={provider ?? ""}
+                  options={[
+                    { value: "", label: "All providers" },
+                    ...providers.map((entry) => ({ value: entry, label: entry })),
+                  ]}
+                  onChange={(value) =>
+                    setFilters((current) => ({ ...current, provider: value || null }))
+                  }
+                />
+              )}
             </div>
           ) : null}
-          {visible.length > 0 ? (
+          {view === "planned" ? (
+            <PlannedTaskProgress
+              tasks={planned.tasks}
+              pending={plannedState.pending}
+              error={plannedState.error}
+              notes={planned.notes}
+              showProject={props.projectKey == null}
+            />
+          ) : visible.length > 0 ? (
             <TaskProgressPanel
               rows={progressRows}
               visibleThreads={visible.length}
@@ -400,7 +508,27 @@ export function TaskBoardPage(props: {
           ) : null
         ) : (
           <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
-            {cards.length === 0 ? (
+            {view === "planned" ? (
+              <ScrollArea className="min-h-0 min-w-0 flex-1">
+                <div className="flex min-h-full w-full min-w-0 flex-col pb-8 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) md:h-full">
+                  <PlannedTaskBoard
+                    tasks={planned.tasks}
+                    threadsByTask={planned.threadsByTask}
+                    linkChoices={planned.linkChoices}
+                    showProject={props.projectKey == null}
+                    onLink={setPlannedLink}
+                    onOpenThread={(thread) =>
+                      void navigate({
+                        to: "/$environmentId/$threadId",
+                        params: buildThreadRouteParams(
+                          scopeThreadRef(thread.environmentId, thread.threadId),
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              </ScrollArea>
+            ) : cards.length === 0 ? (
               projectsReady ? (
                 <Empty className="flex-1">
                   <EmptyHeader>
@@ -579,4 +707,108 @@ function FilterSelect(props: {
       </select>
     </label>
   );
+}
+
+function buildPlannedBoard(input: {
+  readonly active: boolean;
+  readonly snapshots: readonly (PlannedTaskWorkspace & {
+    readonly snapshot: PlannedTaskSnapshot;
+  })[];
+  readonly threads: readonly EnvironmentThreadShell[];
+  readonly groups: readonly SidebarProjectSnapshot[];
+  readonly links: Readonly<Record<string, PlannedTaskLink | null>>;
+  readonly openingTexts: ReadonlyMap<string, string>;
+  readonly topic: string | null;
+  readonly showFirstCheckoutNote: boolean;
+}): {
+  readonly tasks: readonly PlannedBoardTask[];
+  readonly topics: readonly string[];
+  readonly topic: string | null;
+  readonly notes: readonly string[];
+  readonly threadsByTask: ReadonlyMap<string, readonly PlannedBoardThread[]>;
+  readonly linkChoices: readonly PlannedBoardThread[];
+} {
+  const empty = {
+    tasks: [],
+    topics: [],
+    topic: null,
+    notes: [],
+    threadsByTask: new Map<string, readonly PlannedBoardThread[]>(),
+    linkChoices: [],
+  };
+  if (!input.active) return empty;
+  const all = input.snapshots.flatMap((entry) =>
+    entry.snapshot.tasks.map((task) => ({
+      ...task,
+      projectKey: entry.projectKey,
+      projectName: entry.projectName,
+      environmentId: entry.environmentId,
+      cwd: entry.cwd,
+    })),
+  );
+  const topics = [...new Set(all.map((task) => task.topic))].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  const topic = input.topic !== null && topics.includes(input.topic) ? input.topic : null;
+  const tasks = topic === null ? all : all.filter((task) => task.topic === topic);
+  const projectByMember = new Map<string, string>();
+  for (const group of input.groups) {
+    for (const member of group.memberProjects) {
+      projectByMember.set(`${member.environmentId}:${member.id}`, group.projectKey);
+    }
+  }
+  const relevant = new Set(input.snapshots.map((entry) => entry.projectKey));
+  const linkThreads: PlannedLinkThread[] = [];
+  const linkChoices: PlannedBoardThread[] = [];
+  for (const thread of input.threads) {
+    if (thread.deletedAt !== null) continue;
+    const projectKey = projectByMember.get(`${thread.environmentId}:${thread.projectId}`);
+    if (projectKey === undefined || !relevant.has(projectKey)) continue;
+    const key = `${thread.environmentId}:${thread.id}`;
+    linkThreads.push({
+      key,
+      projectKey,
+      title: thread.title,
+      branch: thread.branch,
+      worktreePath: thread.worktreePath,
+      openingText: input.openingTexts.get(key) ?? null,
+    });
+    linkChoices.push({
+      key,
+      projectKey,
+      title: thread.title,
+      statusLabel: resolveThreadStatusPill({ thread })?.label ?? "Idle",
+      child: thread.lineage.parentThreadId !== null,
+      manual: input.links[key] != null,
+      environmentId: thread.environmentId,
+      threadId: thread.id,
+    });
+  }
+  const linked = linkThreadsToPlannedTasks({
+    tasks: all,
+    threads: linkThreads,
+    manual: input.links,
+  });
+  const choiceByKey = new Map(linkChoices.map((thread) => [thread.key, thread]));
+  const threadsByTask = new Map<string, readonly PlannedBoardThread[]>();
+  for (const [key, threadKeys] of linked) {
+    const rows: PlannedBoardThread[] = [];
+    for (const threadKey of threadKeys) {
+      const thread = choiceByKey.get(threadKey);
+      if (thread !== undefined) rows.push(thread);
+    }
+    threadsByTask.set(key, rows);
+  }
+  const notes: string[] = [];
+  const globs = [...new Set(input.snapshots.map((entry) => entry.snapshot.issuesGlob))];
+  const glob = globs.length === 1 ? globs[0] : undefined;
+  if (glob !== undefined) notes.push(`Reading ${glob}.`);
+  for (const entry of input.snapshots) {
+    if (entry.snapshot.warning !== null)
+      notes.push(`${entry.projectName}: ${entry.snapshot.warning}`);
+  }
+  if (input.showFirstCheckoutNote && input.snapshots.length > 0) {
+    notes.push("Each project is read from its first checkout.");
+  }
+  return { tasks, topics, topic, notes, threadsByTask, linkChoices };
 }
