@@ -29,6 +29,8 @@ import {
 } from "./taskBoardModel";
 import type { TaskThreadPlans } from "./taskPlanSummary";
 import { TaskPlanSection } from "./taskPlanView";
+import { taskThreadStepProgress } from "./taskProgress";
+import { TaskProgressMeter } from "./taskProgressView";
 
 const COLUMN_DOT: Record<TaskColumnId, string> = {
   todo: "bg-muted-foreground/70",
@@ -233,6 +235,7 @@ function TaskCardView(props: {
     card.activityMs === null
       ? null
       : formatRelativeTimeLabel(new Date(card.activityMs).toISOString(), props.nowMs);
+  const { progress, blockedReason } = taskThreadStepProgress(card, props.plan);
   const open = () => props.onOpen(card);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const keyDown = listeners?.onKeyDown;
@@ -281,6 +284,9 @@ function TaskCardView(props: {
         </div>
         {card.branch ? (
           <span className="truncate font-mono text-2xs text-muted-foreground">{card.branch}</span>
+        ) : null}
+        {progress.planned > 0 ? (
+          <TaskProgressMeter progress={progress} blockedReason={blockedReason} />
         ) : null}
       </div>
       {props.linkProjects && card.projectKey ? (

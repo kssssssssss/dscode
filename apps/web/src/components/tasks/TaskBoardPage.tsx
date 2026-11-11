@@ -37,7 +37,9 @@ import {
   taskPlanForCard,
   type TaskThreadPlans,
 } from "./taskPlanSummary";
+import { taskThreadStepProgress } from "./taskProgress";
 import { TaskPlanDialog } from "./taskPlanView";
+import { TaskProgressPanel } from "./taskProgressView";
 import { useTaskPlans } from "./useTaskPlans";
 import type { TaskPlanEntry } from "./TaskStepBoard";
 import {
@@ -257,6 +259,16 @@ export function TaskBoardPage(props: {
   };
   const readerCard =
     reader === null ? null : (counted.find((card) => card.key === reader.key) ?? null);
+  const progressRows = visible.map((card) => {
+    const stepProgress = taskThreadStepProgress(card, planFor(card));
+    return {
+      key: card.key,
+      title: card.title,
+      project: card.projectName,
+      progress: stepProgress.progress,
+      blockedReason: stepProgress.blockedReason,
+    };
+  });
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
@@ -364,6 +376,17 @@ export function TaskBoardPage(props: {
                 }
               />
             </div>
+          ) : null}
+          {visible.length > 0 ? (
+            <TaskProgressPanel
+              rows={progressRows}
+              visibleThreads={visible.length}
+              showProject={props.projectKey == null}
+              onOpen={(key) => {
+                const card = visible.find((entry) => entry.key === key);
+                if (card) openCard(card);
+              }}
+            />
           ) : null}
         </div>
         {props.projectKey && !project ? (

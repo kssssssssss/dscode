@@ -128,6 +128,8 @@ describe("buildTaskCards", () => {
       derivedColumn: "todo",
       locked: false,
       statusLabel: "Needs review",
+      activityStatus: "Idle",
+      latestRunStatus: null,
       projectName: "Alpha",
       provider: "Codex",
     });
@@ -145,6 +147,8 @@ describe("buildTaskCards", () => {
       column: "blocked",
       locked: true,
       statusLabel: "Failed",
+      activityStatus: "Failed",
+      latestRunStatus: "failed",
     });
     expect(columnOf(cards, "Snoozed")).toMatchObject({
       column: "blocked",
@@ -169,6 +173,30 @@ describe("buildTaskCards", () => {
       statusLabel: "Usage limit",
     });
     expect(columnOf(cards, "Running")?.column).toBe("progress");
+  });
+
+  it("keeps a seen failure and an interrupt on the run after the pill goes idle", () => {
+    const seen = thread("alpha", {
+      title: "Seen failure",
+      runtime,
+      latestRun: completedRun("2026-10-20T11:00:00.000Z", "failed"),
+      lastVisitedAt: "2026-10-20T11:30:00.000Z",
+    });
+    const interrupted = thread("alpha", {
+      title: "Interrupted",
+      runtime,
+      latestRun: { ...completedRun("2026-10-20T11:00:00.000Z"), status: "interrupted" },
+    });
+    const cards = board([seen, interrupted]);
+    expect(columnOf(cards, "Seen failure")).toMatchObject({
+      activityStatus: "Idle",
+      latestRunStatus: "failed",
+      statusLabel: "Idle",
+    });
+    expect(columnOf(cards, "Interrupted")).toMatchObject({
+      activityStatus: "Idle",
+      latestRunStatus: "interrupted",
+    });
   });
 
   it("ignores a manual column while the agent owns the thread", () => {

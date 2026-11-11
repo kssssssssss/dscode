@@ -109,6 +109,10 @@ export interface TaskCard {
   readonly snoozed: boolean;
   readonly settled: boolean;
   readonly statusLabel: string;
+  /** Live thread status. `statusLabel` can be a manual column name instead. */
+  readonly activityStatus: string;
+  /** Run status from the shell. A seen failure or interrupt stays here after the pill goes idle. */
+  readonly latestRunStatus: string | null;
   readonly activityMs: number | null;
   readonly placement: ManualTaskColumn | null;
   /** Shell flag for an active proposed plan, before the thread snapshot arrives. */
@@ -190,6 +194,8 @@ export function buildTaskCards(input: {
         !classification.locked && placement !== null && placement !== classification.column
           ? taskColumnLabel(placement)
           : classification.statusLabel,
+      activityStatus: classification.statusLabel,
+      latestRunStatus: thread.latestRun?.status ?? null,
       activityMs: taskActivityMs(thread),
       placement: classification.locked ? null : placement,
       hasProposedPlan: thread.hasActionableProposedPlan,
