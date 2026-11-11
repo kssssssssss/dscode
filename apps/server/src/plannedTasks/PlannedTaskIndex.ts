@@ -39,6 +39,10 @@ export class PlannedTaskIndex extends Context.Service<
   }
 >()("t3/plannedTasks/PlannedTaskIndex") {}
 
+function hasParentSegment(value: string): boolean {
+  return value.split(/[/\\]/u).includes("..");
+}
+
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -49,14 +53,25 @@ const make = Effect.gen(function* () {
 
   const fail = (detail: string) => new PlannedTaskReadError({ detail });
 
-  const normalizeRoot = (cwd: string) =>
-    workspacePaths
-      .normalizeWorkspaceRoot(cwd)
+  // The client may pass a checkout that belongs to an older server on this machine.
+  // The path has to already be absolute, exist, and contain no `..`.
+  const normalizeRoot = (cwd: string) => {
+    const trimmed = cwd.trim();
+    if (trimmed.length === 0 || !path.isAbsolute(trimmed) || hasParentSegment(trimmed)) {
+      return Effect.fail(fail(`The project path must be an absolute path on this machine: ${cwd}`));
+    }
+    return workspacePaths
+      .normalizeWorkspaceRoot(trimmed)
       .pipe(
-        Effect.mapError(
-          () => new PlannedTaskReadError({ detail: `Could not read the project at ${cwd}.` }),
+        Effect.mapError((error) =>
+          fail(
+            error._tag === "WorkspaceRootNotExistsError"
+              ? `That folder is not on this machine: ${trimmed}`
+              : `Could not read the project at ${trimmed}.`,
+          ),
         ),
       );
+  };
 
   const staysInside = (root: string, target: string) => {
     const relative = path.relative(root, target);

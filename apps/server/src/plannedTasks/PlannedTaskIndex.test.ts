@@ -1,9 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { makeMethods } from "@effect/vitest";
 import { describe, expect, it as baseIt } from "vite-plus/test";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 
@@ -101,4 +103,42 @@ describe("PlannedTaskIndex", () => {
       expect(outside._tag).toBe("Failure");
     }).pipe(Effect.provide(layerTest)),
   );
+
+  it.effect("refuses a root that is not an absolute directory on this machine", () =>
+    Effect.gen(function* () {
+      const index = yield* PlannedTaskIndex.PlannedTaskIndex;
+      const relative = yield* Effect.exit(Stream.runHead(index.subscribe("tasks")));
+      expect(failureDetail(relative)).toContain("absolute path");
+      const parent = yield* Effect.exit(
+        Stream.runHead(index.subscribe("/tmp/t3-planned-tasks/../etc")),
+      );
+      expect(failureDetail(parent)).toContain("absolute path");
+      const missing = yield* Effect.exit(
+        Stream.runHead(index.subscribe("/tmp/t3-planned-tasks-missing-root")),
+      );
+      expect(failureDetail(missing)).toContain("not on this machine");
+      const escaped = yield* Effect.exit(index.read({ cwd: "tasks", relativePath: "01.md" }));
+      expect(failureDetail(escaped)).toContain("absolute path");
+    }).pipe(Effect.provide(layerTest)),
+  );
 });
+
+function failureDetail(exit: {
+  readonly _tag: string;
+  readonly cause?: Cause.Cause<unknown>;
+}): string {
+  if (exit._tag !== "Failure" || exit.cause === undefined) return "";
+  const error = Cause.findErrorOption(exit.cause);
+  if (Option.isSome(error)) {
+    const value = error.value;
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "detail" in value &&
+      typeof value.detail === "string"
+    ) {
+      return value.detail;
+    }
+  }
+  return Cause.pretty(exit.cause);
+}

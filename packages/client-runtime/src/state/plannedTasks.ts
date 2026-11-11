@@ -7,6 +7,13 @@ import {
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
 
+export {
+  choosePlannedTaskAttempt,
+  describePlannedTaskFailure,
+  planPlannedTaskRead,
+} from "./plannedTaskSource.ts";
+export type { PlannedTaskReadAttempt } from "./plannedTaskSource.ts";
+
 const PLANNED_TASK_IDLE_TTL_MS = 60_000;
 
 export function createPlannedTaskAtoms<R, E>(

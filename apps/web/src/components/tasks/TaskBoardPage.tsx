@@ -1,7 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import type { PlannedTaskSnapshot } from "@t3tools/contracts";
+import { planPlannedTaskRead } from "@t3tools/client-runtime/state/plannedTasks";
 import { resolveProjectGraphSource } from "@t3tools/client-runtime/state/project-graph-source";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { Link, useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -21,7 +21,7 @@ import {
   useServerConfigs,
   useThreadShells,
 } from "../../state/entities";
-import { useEnvironments } from "../../state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { ScrollArea } from "../ui/scroll-area";
@@ -57,6 +57,7 @@ import {
 import {
   usePlannedTaskSnapshots,
   useThreadOpeningTexts,
+  type PlannedTaskLoaded,
   type PlannedTaskWorkspace,
 } from "./usePlannedTasks";
 import { useTaskPlans } from "./useTaskPlans";
@@ -115,6 +116,7 @@ export function TaskBoardPage(props: {
   const serverConfigs = useServerConfigs();
   const projectsReady = useAllEnvironmentProjectSnapshotsReady();
   const { environments } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const nowMinute = useNowMinute();
   const now = `${nowMinute}:00.000Z`;
   const { settleThread, unsettleThread, unsnoozeThread } = useThreadActions();
@@ -298,17 +300,41 @@ export function TaskBoardPage(props: {
       blockedReason: stepProgress.blockedReason,
     };
   });
+  const plannedReaders = environments.map((environment) => ({
+    environmentId: environment.environmentId,
+    label: environment.label,
+    displayUrl: environment.displayUrl,
+    connection: environment.connection,
+    primary: environment.environmentId === primaryEnvironmentId,
+    serverConfig: environment.serverConfig,
+  }));
+  // Threads stay on the project server. This plan only chooses who reads the files.
+  const planCheckout = (
+    projectKey: string,
+    projectName: string,
+    owner: (typeof plannedReaders)[number]["environmentId"],
+    cwd: string,
+  ): PlannedTaskWorkspace => ({
+    projectKey,
+    projectName,
+    cwd,
+    ...planPlannedTaskRead({
+      projectName,
+      owner,
+      environments: plannedReaders,
+    }),
+  });
   const plannedWorkspaces: PlannedTaskWorkspace[] =
     view === "planned"
       ? props.projectKey
         ? project && member
           ? [
-              {
-                projectKey: project.projectKey,
-                projectName: project.displayName,
-                environmentId: member.environmentId,
-                cwd: member.workspaceRoot,
-              },
+              planCheckout(
+                project.projectKey,
+                project.displayName,
+                member.environmentId,
+                member.workspaceRoot,
+              ),
             ]
           : []
         : groups.flatMap((group) => {
@@ -316,12 +342,12 @@ export function TaskBoardPage(props: {
             const checkout = group.memberProjects[0];
             if (checkout === undefined) return [];
             return [
-              {
-                projectKey: group.projectKey,
-                projectName: group.displayName,
-                environmentId: checkout.environmentId,
-                cwd: checkout.workspaceRoot,
-              },
+              planCheckout(
+                group.projectKey,
+                group.displayName,
+                checkout.environmentId,
+                checkout.workspaceRoot,
+              ),
             ];
           })
       : [];
@@ -711,9 +737,7 @@ function FilterSelect(props: {
 
 function buildPlannedBoard(input: {
   readonly active: boolean;
-  readonly snapshots: readonly (PlannedTaskWorkspace & {
-    readonly snapshot: PlannedTaskSnapshot;
-  })[];
+  readonly snapshots: readonly PlannedTaskLoaded[];
   readonly threads: readonly EnvironmentThreadShell[];
   readonly groups: readonly SidebarProjectSnapshot[];
   readonly links: Readonly<Record<string, PlannedTaskLink | null>>;
@@ -800,6 +824,9 @@ function buildPlannedBoard(input: {
     threadsByTask.set(key, rows);
   }
   const notes: string[] = [];
+  for (const entry of input.snapshots) {
+    if (entry.sourceNote.length > 0) notes.push(entry.sourceNote);
+  }
   const globs = [...new Set(input.snapshots.map((entry) => entry.snapshot.issuesGlob))];
   const glob = globs.length === 1 ? globs[0] : undefined;
   if (glob !== undefined) notes.push(`Reading ${glob}.`);

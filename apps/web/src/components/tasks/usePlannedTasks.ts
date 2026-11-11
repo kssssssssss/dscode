@@ -1,4 +1,9 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  choosePlannedTaskAttempt,
+  describePlannedTaskFailure,
+  type PlannedTaskReadAttempt,
+} from "@t3tools/client-runtime/state/plannedTasks";
 import type { EnvironmentId, PlannedTaskSnapshot, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
@@ -9,52 +14,91 @@ import { plannedTasksEnvironment } from "../../state/plannedTasks";
 export interface PlannedTaskWorkspace {
   readonly projectKey: string;
   readonly projectName: string;
+  readonly cwd: string;
+  readonly attempts: readonly PlannedTaskReadAttempt[];
+  readonly waiting: boolean;
+  readonly unavailableReason: string | null;
+}
+
+export interface PlannedTaskLoaded {
+  readonly projectKey: string;
+  readonly projectName: string;
+  /** The server that returned the files. Threads stay on the project server. */
   readonly environmentId: EnvironmentId;
   readonly cwd: string;
+  readonly snapshot: PlannedTaskSnapshot;
+  readonly sourceNote: string;
 }
 
 export function usePlannedTaskSnapshots(workspaces: readonly PlannedTaskWorkspace[]): {
-  readonly snapshots: readonly (PlannedTaskWorkspace & {
-    readonly snapshot: PlannedTaskSnapshot;
-  })[];
+  readonly snapshots: readonly PlannedTaskLoaded[];
   readonly pending: boolean;
   readonly error: string | null;
 } {
-  const packed = workspaces
-    .map(
-      (workspace) =>
-        `${workspace.environmentId}\u0000${workspace.cwd}\u0000${workspace.projectKey}\u0000${workspace.projectName}`,
-    )
-    .join("\n");
+  const packed = JSON.stringify(workspaces);
   const atom = Atom.make((get) => {
-    const snapshots: Array<PlannedTaskWorkspace & { readonly snapshot: PlannedTaskSnapshot }> = [];
+    const snapshots: PlannedTaskLoaded[] = [];
+    const errors: string[] = [];
     let pending = false;
-    let error: string | null = null;
-    if (packed.length === 0) return { snapshots, pending, error };
-    for (const line of packed.split("\n")) {
-      const [environmentId, cwd, projectKey, projectName] = line.split("\u0000");
-      if (environmentId === undefined || cwd === undefined || projectKey === undefined) continue;
-      const result = get(
-        plannedTasksEnvironment.subscribe({
-          environmentId: environmentId as EnvironmentId,
-          input: { cwd },
-        }),
-      );
-      if (result._tag === "Success") {
-        snapshots.push({
-          projectKey,
-          projectName: projectName ?? projectKey,
-          environmentId: environmentId as EnvironmentId,
-          cwd,
-          snapshot: result.value,
-        });
-      } else if (result._tag === "Failure") {
-        error = "Could not read planned tasks.";
-      } else {
+    const requests = JSON.parse(packed) as readonly PlannedTaskWorkspace[];
+    for (const workspace of requests) {
+      if (workspace.waiting) {
         pending = true;
+        continue;
       }
+      if (workspace.attempts.length === 0) {
+        if (workspace.unavailableReason !== null) errors.push(workspace.unavailableReason);
+        continue;
+      }
+      const results = workspace.attempts.map((attempt) => {
+        const result = get(
+          plannedTasksEnvironment.subscribe({
+            environmentId: attempt.environmentId,
+            input: { cwd: workspace.cwd },
+          }),
+        );
+        if (result._tag === "Success") {
+          return { _tag: "Success" as const, snapshot: result.value, attempt };
+        }
+        if (result._tag === "Failure") {
+          return {
+            _tag: "Failure" as const,
+            described: describePlannedTaskFailure(result.cause),
+          };
+        }
+        return { _tag: "Pending" as const };
+      });
+      const choice = choosePlannedTaskAttempt(results);
+      if (choice._tag === "pending") {
+        pending = true;
+        continue;
+      }
+      if (choice._tag === "failure") {
+        const failed = results[choice.index];
+        const attempt = workspace.attempts[choice.index];
+        errors.push(
+          failed?._tag === "Failure" && failed.described.unsupported && attempt !== undefined
+            ? `${workspace.projectName}: ${attempt.label} does not serve planned tasks.`
+            : `${workspace.projectName}: ${choice.detail}`,
+        );
+        continue;
+      }
+      const chosen = results[choice.index];
+      if (chosen === undefined || chosen._tag !== "Success") continue;
+      snapshots.push({
+        projectKey: workspace.projectKey,
+        projectName: workspace.projectName,
+        environmentId: chosen.attempt.environmentId,
+        cwd: workspace.cwd,
+        snapshot: chosen.snapshot,
+        sourceNote: chosen.attempt.note,
+      });
     }
-    return { snapshots, pending, error };
+    return {
+      snapshots,
+      pending,
+      error: errors.length > 0 ? errors.join(" ") : null,
+    };
   }).pipe(Atom.withLabel("planned-task-snapshots"));
   return useAtomValue(atom);
 }

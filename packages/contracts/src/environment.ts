@@ -104,6 +104,9 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server answers `vcs.listRefs` with `includeGraph` by returning `graph`; others drop the
       flag, so clients read graphs for their projects from another server on the same machine. */
   projectGraph: Schema.optionalKey(Schema.Boolean),
+  /** Serves `plannedTasks.subscribe`. Older servers omit it, so a client can read
+      that checkout from its own server when both are on the same machine. */
+  plannedTasks: Schema.optionalKey(Schema.Boolean),
   /** Serves `orchestration.forceStopThread`; hide Force stop where it is absent. */
   threadForceStop: Schema.optionalKey(Schema.Boolean),
   /** Every protocol-2 server sends this; older mobile builds still read it. */
